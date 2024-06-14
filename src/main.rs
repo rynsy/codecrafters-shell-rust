@@ -1,14 +1,52 @@
+use std::fmt;
 #[allow(unused_imports)]
 use std::io::{self, Write};
 
-fn process_input(cmd: String) {
-    let parts: Vec<&str> = cmd.split(' ').collect();
-    if let ["exit", exit_code] = parts.as_slice() {
-        std::process::exit(exit_code.parse::<i32>().unwrap());
-    } else if let ["echo", args @ ..] = parts.as_slice() {
-        println!("{}", args.join(" "));
-    } else {
-        println!("{}: command not found", parts[0]);
+struct Command<'a> {
+    parts: Vec<&'a str>,
+}
+
+impl<'a> Command<'a> {
+    fn new(command_string: &'a str) -> Self {
+        Self {
+            parts: command_string.trim().split(' ').collect(),
+        }
+    }
+
+    fn executable(&self) -> &'a str {
+        self.parts[0]
+    }
+
+    fn args(&self) -> Vec<&'a str> {
+        let [_, args @ ..] = self.parts.as_slice() else {
+            todo!()
+        };
+        args.to_vec()
+    }
+}
+
+impl<'a> fmt::Display for Command<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.parts.join(" "))
+    }
+}
+
+fn command_exit(cmd: Command) {
+    let exit_code: i32 = cmd.args().join("").parse::<i32>().unwrap();
+    std::process::exit(exit_code);
+}
+fn command_echo(cmd: Command) {
+    println!("{}", cmd.args().join(" "));
+}
+fn command_unknown(cmd: Command) {
+    println!("{}: command not found", cmd);
+}
+
+fn process_input(cmd: Command) {
+    match cmd.executable() {
+        "echo" => command_echo(cmd),
+        "exit" => command_exit(cmd),
+        _ => command_unknown(cmd),
     }
 }
 
@@ -20,7 +58,7 @@ fn main() {
         io::stdout().flush().unwrap();
         match stdin.read_line(&mut input) {
             Ok(_) => {
-                let cmd = input.trim().to_string().clone();
+                let cmd = Command::new(&input);
                 process_input(cmd);
                 input = String::new();
             }
