@@ -12,16 +12,11 @@ impl<'a> Command<'a> {
             parts: command_string.trim().split(' ').collect(),
         }
     }
-
     fn executable(&self) -> &'a str {
         self.parts[0]
     }
-
     fn args(&self) -> Vec<&'a str> {
-        let [_, args @ ..] = self.parts.as_slice() else {
-            todo!()
-        };
-        args.to_vec()
+        self.parts[1..].to_vec()
     }
 }
 
@@ -31,6 +26,14 @@ impl<'a> fmt::Display for Command<'a> {
     }
 }
 
+fn command_type(cmd: Command) {
+    match cmd.args()[0] {
+        "type" => println!("builtin"),
+        "echo" => println!("builtin"),
+        "exit" => println!("builtin"),
+        _ => println!("unknown"),
+    }
+}
 fn command_exit(cmd: Command) {
     let exit_code: i32 = cmd.args().join("").parse::<i32>().unwrap();
     std::process::exit(exit_code);
@@ -39,11 +42,12 @@ fn command_echo(cmd: Command) {
     println!("{}", cmd.args().join(" "));
 }
 fn command_unknown(cmd: Command) {
-    println!("{}: command not found", cmd);
+    println!("{}: command not found", cmd.executable());
 }
 
 fn process_input(cmd: Command) {
     match cmd.executable() {
+        "type" => command_type(cmd),
         "echo" => command_echo(cmd),
         "exit" => command_exit(cmd),
         _ => command_unknown(cmd),
