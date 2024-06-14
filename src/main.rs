@@ -5,8 +5,8 @@ fn process_input(cmd: String) {
     let parts: Vec<&str> = cmd.split(' ').collect();
     if let ["exit", exit_code] = parts.as_slice() {
         std::process::exit(exit_code.parse::<i32>().unwrap());
-    //    } else if let ["echo", args @ ..] = parts.as_slice() {
-    //        println!("{}", args.join(" "));
+    } else if let ["echo", args @ ..] = parts.as_slice() {
+        println!("{}", args.join(" "));
     } else {
         println!("{}: command not found", parts[0]);
     }
