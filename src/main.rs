@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt;
 use std::io::{self, Write};
 use std::rc::Rc;
+use std::{fmt, fs};
 
 #[derive(Clone, Debug)]
 struct Environment {
@@ -88,7 +88,7 @@ impl Command {
 
     fn command_type(&self) -> CommandType {
         match self.parts[0].as_str() {
-            "export" | "env" | "exit" | "echo" | "type" => CommandType::Builtin,
+            "path" | "export" | "env" | "exit" | "echo" | "type" => CommandType::Builtin,
             _ => CommandType::Unknown,
         }
     }
@@ -114,7 +114,6 @@ fn command_type(cmd: &Command) {
         CommandType::Unknown => println!("{}: not found", target_command.executable()),
     }
 }
-
 fn command_export(cmd: &Command) {
     if cmd.args().len() == 1 && cmd.args()[0].contains('=') {
         let parts: Vec<&str> = cmd.args()[0].split('=').collect();
@@ -127,13 +126,42 @@ fn command_export(cmd: &Command) {
         println!("Error: Bad format");
     }
 }
-
 fn command_env(cmd: &Command) {
     for (key, value) in cmd.env.variables.borrow().iter() {
         println!("{}={}", key, value);
     }
 }
+fn command_path(cmd: &Command) {
+    for path in cmd.env.path.borrow().iter() {
+        println!("{}", path);
+    }
+}
 
+fn command_which(cmd: &Command) {
+    for path in cmd.env.path.borrow().iter() {
+        // Search path for cmd.args()[0]
+        println!("{}", path);
+        match fs::read_dir(path) {
+            Ok(entries) => {
+                for entry in entries {
+                    match entry {
+                        Ok(entry) => {
+                            if entry.path().file_name().unwrap() == cmd.args()[0] {
+                                println!(
+                                    "{} is located at {}",
+                                    cmd.args()[0],
+                                    entry.path().to_str().unwrap()
+                                )
+                            }
+                        }
+                        Err(e) => eprintln!("Error: {}", e),
+                    }
+                }
+            }
+            Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+}
 fn command_exit(cmd: &Command) {
     let exit_code: i32 = cmd.args().join("").parse().unwrap_or(0);
     std::process::exit(exit_code);
@@ -167,7 +195,9 @@ fn process_input(cmd: Command) -> Rc<Environment> {
     }
 
     match cmd.executable() {
+        "which" => command_which(&cmd),
         "env" => command_env(&cmd),
+        "path" => command_path(&cmd),
         "export" => {
             command_export(&cmd);
 
