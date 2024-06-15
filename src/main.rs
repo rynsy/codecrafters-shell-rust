@@ -14,6 +14,7 @@ fn command_type(cmd: &Command) {
 
         if let Some(new_cmd) = args.first() {
             let mut target_command = Command::new(new_cmd);
+            target_command.current_dir(cmd.get_current_dir().unwrap());
 
             // Skip the first argument since it's the new command
             for arg in &args[1..] {
@@ -27,7 +28,7 @@ fn command_type(cmd: &Command) {
 
             match program.to_str() {
                 Some(p) => match p {
-                    "echo" | "type" | "which" | "exit" | "export" => {
+                    "pwd" | "echo" | "type" | "which" | "exit" | "export" => {
                         println!("{} is a shell builtin", p)
                     }
                     _ => {
@@ -48,7 +49,7 @@ fn command_type(cmd: &Command) {
 fn command_export(cmd: &Command) {
     let args: Vec<&str> = cmd.get_args().map(|arg| arg.to_str().unwrap()).collect();
     //    let envs: Vec<(String, String)> = std::env::vars().collect();
-    if args.len() == 1 && args.first().unwrap().contains("=") {
+    if args.len() == 1 && args.first().unwrap().contains('=') {
         let parts: Vec<&str> = args.first().unwrap().split('=').collect();
         if parts.len() == 2 {
             std::env::set_var(parts[0], parts[1]);
@@ -59,10 +60,12 @@ fn command_export(cmd: &Command) {
         println!("Error: Bad format");
     }
 }
+fn command_pwd(cmd: &Command) {
+    println!("{}", cmd.get_current_dir().unwrap().to_str().unwrap());
+}
 fn command_env(cmd: &Command) {
     let envs: Vec<(String, String)> = cmd
         .get_envs()
-        .into_iter()
         .filter_map(|(x, y)| {
             // Ensure both key and value are present and can be converted to String
             if let (Some(key), Some(value)) = (x.to_str(), y.as_ref().and_then(|v| v.to_str())) {
@@ -136,6 +139,7 @@ fn command_which(cmd: &Command) {
 
         if let Some(new_cmd) = args.first() {
             let mut target_command = Command::new(new_cmd);
+            target_command.current_dir(cmd.get_current_dir().unwrap());
 
             // Skip the first argument since it's the new command
             for arg in &args[1..] {
@@ -193,16 +197,18 @@ fn command_exec(mut cmd: Command) {
 }
 
 fn process_input(command_string: String) {
-    let parts: Vec<String> = command_string.split(" ").map(|s| s.to_string()).collect();
+    let parts: Vec<String> = command_string.split(' ').map(|s| s.to_string()).collect();
     let mut iter = parts.iter().peekable();
     let mut temp_vars: HashMap<String, String> = HashMap::new();
-    let global_variables: HashMap<String, String> = std::env::vars().collect();
 
-    if iter.peek().unwrap().contains("=") {
+    let global_variables: HashMap<String, String> = std::env::vars().collect();
+    let directory = std::env::current_dir().unwrap();
+
+    if iter.peek().unwrap().contains('=') {
         //loop while top of parts iterator contains "="
-        while iter.peek().unwrap().contains("=") {
+        while iter.peek().unwrap().contains('=') {
             let part = iter.next().unwrap();
-            let mut split = part.splitn(2, "=");
+            let mut split = part.splitn(2, '=');
             let key = split.next().unwrap_or("").trim_matches('\"').to_string();
             let value = split.next().unwrap_or("").trim_matches('\"').to_string();
             temp_vars.insert(key, value);
@@ -212,9 +218,10 @@ fn process_input(command_string: String) {
     let program = iter.next().unwrap();
 
     let mut cmd = Command::new(program);
+    cmd.current_dir(directory);
 
-    while let Some(part) = iter.next() {
-        cmd.arg(part);
+    for part in iter {
+        cmd.arg(part.clone());
     }
 
     for (k, v) in global_variables.iter() {
@@ -228,6 +235,7 @@ fn process_input(command_string: String) {
     match cmd.get_program().to_str().unwrap() {
         "which" => command_which(&cmd),
         "env" => command_env(&cmd),
+        "pwd" => command_pwd(&cmd),
         "path" => command_path(&cmd),
         "export" => {
             command_export(&cmd);
