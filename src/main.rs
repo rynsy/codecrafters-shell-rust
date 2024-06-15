@@ -22,10 +22,6 @@ impl Environment {
         }
     }
 
-    fn find(&self, cmd: &str) -> Option<String> {
-        self.variables.borrow().get(cmd).cloned()
-    }
-
     fn insert_var(&self, key: &str, val: String) {
         if key.to_lowercase() == "path" {
             let paths: Vec<String> = val
@@ -93,8 +89,13 @@ impl Command {
     fn command_type(&self) -> CommandType {
         match self.parts[0].as_str() {
             "path" | "export" | "env" | "exit" | "echo" | "type" => CommandType::Builtin,
-            "fuck" => CommandType::Environment,
-            _ => CommandType::Unknown,
+            _ => {
+                if !_find(self).is_empty() {
+                    CommandType::Environment
+                } else {
+                    CommandType::Unknown
+                }
+            }
         }
     }
 }
@@ -106,14 +107,20 @@ impl fmt::Display for Command {
 }
 
 fn command_type(cmd: &Command) {
+    if cmd.args().len() != 1 {
+        return;
+    }
     let binding = cmd.arg_string();
     let envbind = Rc::clone(&cmd.env);
     let target_command = Command::from(binding, envbind);
     match target_command.command_type() {
         CommandType::Builtin => println!("{} is a shell builtin", target_command.executable()),
         CommandType::Environment => {
-            if let Some(location) = cmd.env.find(cmd.executable()) {
-                println!("{} is at {}", cmd.executable(), location);
+            let location = _find(&target_command);
+            if location.is_empty() {
+                println!("{}: not found", cmd.args()[0]);
+            } else {
+                println!("{} is {}", cmd.args()[0], location);
             }
         }
         CommandType::Unknown => println!("{}: not found", target_command.executable()),
@@ -149,7 +156,7 @@ fn _find(cmd: &Command) -> String {
         if let Ok(entries) = fs::read_dir(path) {
             entries.for_each(|entry| {
                 if let Ok(entry) = entry {
-                    if entry.path().file_name().unwrap() == cmd.args()[0] {
+                    if entry.path().file_name().unwrap() == cmd.executable() {
                         location = entry.path().to_str().unwrap().to_string();
                     }
                 }
