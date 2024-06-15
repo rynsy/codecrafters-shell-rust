@@ -2,14 +2,29 @@ use std::fmt;
 #[allow(unused_imports)]
 use std::io::{self, Write};
 
+enum CommandType {
+    Builtin,
+    Environment,
+    Unknown,
+}
+
 struct Command<'a> {
     parts: Vec<&'a str>,
+    command_type: CommandType,
 }
 
 impl<'a> Command<'a> {
     fn new(command_string: &'a str) -> Self {
+        let parts: Vec<&str> = command_string.trim().split(' ').collect();
+        let command_type: CommandType = match parts[0] {
+            "exit" => CommandType::Builtin,
+            "echo" => CommandType::Builtin,
+            "type" => CommandType::Builtin,
+            _ => CommandType::Unknown,
+        };
         Self {
-            parts: command_string.trim().split(' ').collect(),
+            parts,
+            command_type,
         }
     }
     fn executable(&self) -> &'a str {
@@ -17,6 +32,9 @@ impl<'a> Command<'a> {
     }
     fn args(&self) -> Vec<&'a str> {
         self.parts[1..].to_vec()
+    }
+    fn command_type(&self) -> &CommandType {
+        &self.command_type
     }
 }
 
@@ -27,12 +45,14 @@ impl<'a> fmt::Display for Command<'a> {
 }
 
 fn command_type(cmd: Command) {
-    match cmd.args()[0] {
-        "type" => println!("builtin"),
-        "echo" => println!("builtin"),
-        "exit" => println!("builtin"),
-        _ => println!("unknown"),
+    match cmd.command_type() {
+        CommandType::Builtin => println!("{} is a shell builtin", cmd.executable()),
+        CommandType::Environment => println!("{} is at {}", cmd.executable(), cmd.executable()),
+        CommandType::Unknown => println!("{}: not found", cmd.executable()),
     }
+}
+fn command_which(cmd: Command) {
+    println!("{}", cmd)
 }
 fn command_exit(cmd: Command) {
     let exit_code: i32 = cmd.args().join("").parse::<i32>().unwrap();
