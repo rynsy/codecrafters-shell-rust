@@ -146,7 +146,6 @@ fn _find(cmd: &Command) -> String {
     let mut location = String::new();
     for path in cmd.env.path.borrow().iter() {
         // Search path for cmd.args()[0]
-        println!("{}", path);
         if let Ok(entries) = fs::read_dir(path) {
             entries.for_each(|entry| {
                 if let Ok(entry) = entry {
@@ -244,6 +243,13 @@ fn parse_environment_variables(cmd: &Command) -> Command {
 fn main() {
     let stdin = io::stdin();
     let mut environment = Rc::new(Environment::new());
+    // TODO: Right here I need to pull in the processes environment and copy those down to the
+    // command
+
+    for (key, value) in std::env::vars() {
+        environment.insert_var(key.as_str(), value);
+    }
+
     loop {
         print!("$ ");
         io::stdout().flush().unwrap();
