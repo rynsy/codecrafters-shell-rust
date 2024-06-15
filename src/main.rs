@@ -45,10 +45,12 @@ impl<'a> fmt::Display for Command<'a> {
 }
 
 fn command_type(cmd: Command) {
-    match cmd.command_type() {
-        CommandType::Builtin => println!("{} is a shell builtin", cmd.args()[0]),
+    let binding = cmd.args().join(" ");
+    let target_command = Command::new(&binding);
+    match target_command.command_type() {
+        CommandType::Builtin => println!("{} is a shell builtin", target_command.executable()),
         //       CommandType::Environment => println!("{} is at {}", cmd.executable(), cmd.executable()),
-        CommandType::Unknown => println!("{}: not found", cmd.args()[0]),
+        CommandType::Unknown => println!("{}: not found", target_command.executable()),
     }
 }
 // fn command_which(cmd: Command) {
