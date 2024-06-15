@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::process::CommandExt;
 use std::process::Command;
 
 fn command_type(cmd: &Command) {
@@ -177,9 +176,20 @@ fn command_unknown(cmd: &Command) {
 }
 
 fn command_exec(mut cmd: Command) {
-    cmd.exec();
+    let output = cmd.output();
 
-    // TODO: capture status, call command_unknown if it fails, do not let the process escape
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                io::stdout().write_all(&output.stdout).unwrap();
+            } else {
+                eprint!("{}", String::from_utf8_lossy(&output.stderr));
+            }
+        }
+        Err(_) => {
+            command_unknown(&cmd);
+        }
+    }
 }
 
 fn process_input(command_string: String) {
