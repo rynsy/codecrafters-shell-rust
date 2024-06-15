@@ -28,7 +28,7 @@ fn command_type(cmd: &Command) {
             match program.to_str() {
                 Some(p) => match p {
                     "echo" | "type" | "which" | "exit" | "export" => {
-                        println!("{} is builtin", p)
+                        println!("{} is a shell builtin", p)
                     }
                     _ => {
                         let location = _find(&target_command);
