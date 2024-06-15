@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::{self, Write};
+use std::path::Path;
 use std::process::Command;
 use std::{env, fs};
 
@@ -72,14 +73,11 @@ fn command_cd(cmd: &Command) {
     }
 
     let dir = *args.first().unwrap();
-
-    if dir.starts_with('/') {
-        // absolute path
-        match env::set_current_dir(dir) {
-            Ok(_) => (),
-            Err(_) => println!("cd: {}: No such file or directory", dir),
-            //Err(e) => println!("cd: {}: {}", dir, e),
-        }
+    let dir = Path::new(dir);
+    match env::set_current_dir(dir) {
+        Ok(_) => (),
+        Err(_) => println!("cd: {}: No such file or directory", dir.to_str().unwrap()),
+        //Err(e) => println!("cd: {}: {}", dir, e),
     }
 }
 fn command_env(cmd: &Command) {
