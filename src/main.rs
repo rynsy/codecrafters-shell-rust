@@ -46,9 +46,9 @@ impl<'a> fmt::Display for Command<'a> {
 
 fn command_type(cmd: Command) {
     match cmd.command_type() {
-        CommandType::Builtin => println!("{} is a shell builtin", cmd.executable()),
+        CommandType::Builtin => println!("{} is a shell builtin", cmd.args()[0]),
         //       CommandType::Environment => println!("{} is at {}", cmd.executable(), cmd.executable()),
-        CommandType::Unknown => println!("{}: not found", cmd.executable()),
+        CommandType::Unknown => println!("{}: not found", cmd.args()[0]),
     }
 }
 // fn command_which(cmd: Command) {
