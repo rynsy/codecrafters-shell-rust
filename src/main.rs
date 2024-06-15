@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::fs;
 use std::io::{self, Write};
 use std::process::Command;
+use std::{env, fs};
 
 fn command_type(cmd: &Command) {
     let cmd_program = cmd.get_program().to_os_string();
@@ -28,7 +28,7 @@ fn command_type(cmd: &Command) {
 
             match program.to_str() {
                 Some(p) => match p {
-                    "pwd" | "echo" | "type" | "which" | "exit" | "export" => {
+                    "cd" | "pwd" | "echo" | "type" | "which" | "exit" | "export" => {
                         println!("{} is a shell builtin", p)
                     }
                     _ => {
@@ -62,6 +62,24 @@ fn command_export(cmd: &Command) {
 }
 fn command_pwd(cmd: &Command) {
     println!("{}", cmd.get_current_dir().unwrap().to_str().unwrap());
+}
+fn command_cd(cmd: &Command) {
+    let args: Vec<&str> = cmd.get_args().map(|arg| arg.to_str().unwrap()).collect();
+
+    if args.len() > 1 {
+        println!("Error: Bad format");
+        return;
+    }
+
+    let dir = *args.first().unwrap();
+
+    if dir.starts_with('/') {
+        // absolute path
+        match env::set_current_dir(dir) {
+            Ok(_) => println!("changed directory to : {}", dir),
+            Err(_) => println!("error changing directory to : {}", dir),
+        }
+    }
 }
 fn command_env(cmd: &Command) {
     let envs: Vec<(String, String)> = cmd
@@ -236,6 +254,7 @@ fn process_input(command_string: String) {
         "which" => command_which(&cmd),
         "env" => command_env(&cmd),
         "pwd" => command_pwd(&cmd),
+        "cd" => command_cd(&cmd),
         "path" => command_path(&cmd),
         "export" => {
             command_export(&cmd);
