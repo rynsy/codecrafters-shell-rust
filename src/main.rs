@@ -4,7 +4,7 @@ use std::io::{self, Write};
 
 enum CommandType {
     Builtin,
-    Environment,
+    //    Environment,
     Unknown,
 }
 
@@ -47,13 +47,13 @@ impl<'a> fmt::Display for Command<'a> {
 fn command_type(cmd: Command) {
     match cmd.command_type() {
         CommandType::Builtin => println!("{} is a shell builtin", cmd.executable()),
-        CommandType::Environment => println!("{} is at {}", cmd.executable(), cmd.executable()),
+        //       CommandType::Environment => println!("{} is at {}", cmd.executable(), cmd.executable()),
         CommandType::Unknown => println!("{}: not found", cmd.executable()),
     }
 }
-fn command_which(cmd: Command) {
-    println!("{}", cmd)
-}
+// fn command_which(cmd: Command) {
+//     println!("{}", cmd)
+// }
 fn command_exit(cmd: Command) {
     let exit_code: i32 = cmd.args().join("").parse::<i32>().unwrap();
     std::process::exit(exit_code);
