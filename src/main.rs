@@ -89,6 +89,7 @@ impl Command {
     fn command_type(&self) -> CommandType {
         match self.parts[0].as_str() {
             "path" | "export" | "env" | "exit" | "echo" | "type" => CommandType::Builtin,
+            "fuck" => CommandType::Environment,
             _ => CommandType::Unknown,
         }
     }
@@ -137,7 +138,7 @@ fn command_path(cmd: &Command) {
     }
 }
 
-fn command_which(cmd: &Command) {
+fn _find(cmd: &Command) -> String {
     for path in cmd.env.path.borrow().iter() {
         // Search path for cmd.args()[0]
         println!("{}", path);
@@ -147,11 +148,7 @@ fn command_which(cmd: &Command) {
                     match entry {
                         Ok(entry) => {
                             if entry.path().file_name().unwrap() == cmd.args()[0] {
-                                println!(
-                                    "{} is located at {}",
-                                    cmd.args()[0],
-                                    entry.path().to_str().unwrap()
-                                )
+                                return entry.path().to_str().unwrap().to_string();
                             }
                         }
                         Err(e) => eprintln!("Error: {}", e),
@@ -160,6 +157,16 @@ fn command_which(cmd: &Command) {
             }
             Err(e) => eprintln!("Error: {}", e),
         }
+    }
+    String::new()
+}
+
+fn command_which(cmd: &Command) {
+    let location = _find(cmd);
+    if location.len() == 0 {
+        println!("{}: not found", cmd.args()[0]);
+    } else {
+        println!("{} is {}", cmd.args()[0], location);
     }
 }
 fn command_exit(cmd: &Command) {
