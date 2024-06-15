@@ -28,7 +28,11 @@ impl Environment {
 
     fn insert_var(&self, key: &str, val: String) {
         if key.to_lowercase() == "path" {
-            let paths: Vec<String> = val.split(':').map(|s| s.to_string()).collect();
+            let paths: Vec<String> = val
+                .trim()
+                .split(':')
+                .map(|s| s.replace("\"", "").to_string())
+                .collect();
             for path in paths {
                 self.insert_path(path);
             }
@@ -151,11 +155,11 @@ fn _find(cmd: &Command) -> String {
                                 return entry.path().to_str().unwrap().to_string();
                             }
                         }
-                        Err(e) => eprintln!("Error: {}", e),
+                        Err(_) => {}
                     }
                 }
             }
-            Err(e) => eprintln!("Error: {}", e),
+            Err(_) => {}
         }
     }
     String::new()
