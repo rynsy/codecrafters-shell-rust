@@ -1,136 +1,58 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ffi::OsString;
+use std::fs;
 use std::io::{self, Write};
-use std::rc::Rc;
-use std::{fmt, fs};
-
-#[derive(Clone, Debug)]
-struct Environment {
-    path: Rc<RefCell<Vec<String>>>,
-    variables: Rc<RefCell<HashMap<String, String>>>,
-}
-
-impl Environment {
-    fn new() -> Self {
-        Self {
-            path: Rc::new(RefCell::new(Vec::new())),
-            variables: Rc::new(RefCell::new({
-                let mut vars = HashMap::new();
-                vars.insert("DEFAULT_KEY".to_string(), "default_value".to_string());
-                vars
-            })),
-        }
-    }
-
-    fn insert_var(&self, key: &str, val: String) {
-        if key.to_lowercase() == "path" {
-            let paths: Vec<String> = val
-                .trim()
-                .split(':')
-                .map(|s| s.replace("\"", "").to_string())
-                .collect();
-            for path in paths {
-                self.insert_path(path);
-            }
-        }
-        self.variables.borrow_mut().insert(key.to_string(), val);
-    }
-
-    fn insert_path(&self, val: String) {
-        self.path.borrow_mut().push(val);
-    }
-}
-
-enum CommandType {
-    Builtin,
-    Environment,
-    Unknown,
-}
-
-#[derive(Clone, Debug)]
-struct Command {
-    parts: Vec<String>,
-    env: Rc<Environment>,
-}
-
-impl Command {
-    fn new(environment: Rc<Environment>) -> Self {
-        Self {
-            parts: Vec::new(),
-            env: environment,
-        }
-    }
-
-    fn with_parts(mut self, parts: Vec<String>) -> Self {
-        self.parts = parts;
-        self
-    }
-
-    fn from(command_string: String, env: Rc<Environment>) -> Self {
-        let parts = command_string
-            .split_whitespace()
-            .map(String::from)
-            .collect();
-        Command::new(env).with_parts(parts)
-    }
-
-    fn executable(&self) -> &str {
-        &self.parts[0]
-    }
-
-    fn args(&self) -> Vec<&str> {
-        self.parts[1..].iter().map(AsRef::as_ref).collect()
-    }
-
-    fn arg_string(&self) -> String {
-        self.args().join(" ")
-    }
-
-    fn command_type(&self) -> CommandType {
-        match self.parts[0].as_str() {
-            "path" | "export" | "env" | "exit" | "echo" | "type" => CommandType::Builtin,
-            _ => {
-                if !_find(self).is_empty() {
-                    CommandType::Environment
-                } else {
-                    CommandType::Unknown
-                }
-            }
-        }
-    }
-}
-
-impl fmt::Display for Command {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.parts.join(" "))
-    }
-}
+use std::os::unix::process::CommandExt;
+use std::process::Command;
 
 fn command_type(cmd: &Command) {
-    if cmd.args().len() != 1 {
-        return;
-    }
-    let binding = cmd.arg_string();
-    let envbind = Rc::clone(&cmd.env);
-    let target_command = Command::from(binding, envbind);
-    match target_command.command_type() {
-        CommandType::Builtin => println!("{} is a shell builtin", target_command.executable()),
-        CommandType::Environment => {
-            let location = _find(&target_command);
-            if location.is_empty() {
-                println!("{}: not found", cmd.args()[0]);
-            } else {
-                println!("{} is {}", cmd.args()[0], location);
+    let cmd_program = cmd.get_program().to_os_string();
+
+    if cmd_program.to_ascii_lowercase().to_str().unwrap() == "type" {
+        // Collect the arguments into a vector
+        let args: Vec<OsString> = cmd.get_args().map(|arg| arg.to_os_string()).collect();
+        let envs: Vec<(String, String)> = std::env::vars().collect();
+
+        if let Some(new_cmd) = args.first() {
+            let mut target_command = Command::new(new_cmd);
+
+            // Skip the first argument since it's the new command
+            for arg in &args[1..] {
+                target_command.arg(arg);
+            }
+            for (key, val) in envs {
+                target_command.env(key, val);
+            }
+
+            let program = target_command.get_program().to_ascii_lowercase();
+
+            match program.to_str() {
+                Some(p) => match p {
+                    "echo" | "type" | "which" | "exit" | "export" => {
+                        println!("{} is builtin", p)
+                    }
+                    _ => {
+                        let location = _find(&target_command);
+                        if location.is_empty() {
+                            println!("{}: not found", p);
+                        } else {
+                            println!("{} is {}", p, location)
+                        }
+                    }
+                },
+                None => println!("Unknown"),
             }
         }
-        CommandType::Unknown => println!("{}: not found", target_command.executable()),
     }
 }
+
 fn command_export(cmd: &Command) {
-    if cmd.args().len() == 1 && cmd.args()[0].contains('=') {
-        let parts: Vec<&str> = cmd.args()[0].split('=').collect();
+    let args: Vec<&str> = cmd.get_args().map(|arg| arg.to_str().unwrap()).collect();
+    //    let envs: Vec<(String, String)> = std::env::vars().collect();
+    if args.len() == 1 && args.first().unwrap().contains("=") {
+        let parts: Vec<&str> = args.first().unwrap().split('=').collect();
         if parts.len() == 2 {
-            cmd.env.insert_var(parts[0], parts[1].to_string());
+            std::env::set_var(parts[0], parts[1]);
         } else {
             println!("Error setting var");
         }
@@ -139,133 +61,198 @@ fn command_export(cmd: &Command) {
     }
 }
 fn command_env(cmd: &Command) {
-    for (key, value) in cmd.env.variables.borrow().iter() {
+    let envs: Vec<(String, String)> = cmd
+        .get_envs()
+        .into_iter()
+        .filter_map(|(x, y)| {
+            // Ensure both key and value are present and can be converted to String
+            if let (Some(key), Some(value)) = (x.to_str(), y.as_ref().and_then(|v| v.to_str())) {
+                Some((key.to_string(), value.to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    for (key, value) in envs {
         println!("{}={}", key, value);
     }
 }
 fn command_path(cmd: &Command) {
-    for path in cmd.env.path.borrow().iter() {
-        println!("{}", path);
+    if let Some((_, path_value)) = cmd
+        .get_envs()
+        .find(|(k, _)| k.to_ascii_lowercase() == "path")
+    {
+        if let Some(path_value) = path_value {
+            if let Some(path_str) = path_value.to_str() {
+                for path in path_str.split(':') {
+                    println!("{}", path);
+                }
+            } else {
+                eprintln!("Failed to convert PATH to string");
+            }
+        } else {
+            eprintln!("PATH value is None");
+        }
+    } else {
+        eprintln!("PATH not found in command environment variables");
     }
 }
 
 fn _find(cmd: &Command) -> String {
     let mut location = String::new();
-    for path in cmd.env.path.borrow().iter() {
-        // Search path for cmd.args()[0]
-        if let Ok(entries) = fs::read_dir(path) {
-            entries.for_each(|entry| {
-                if let Ok(entry) = entry {
-                    if entry.path().file_name().unwrap() == cmd.executable() {
-                        location = entry.path().to_str().unwrap().to_string();
+    if let Some((_, path_value)) = cmd
+        .get_envs()
+        .find(|(k, _)| k.to_ascii_lowercase() == "path")
+    {
+        if let Some(path_value) = path_value {
+            if let Some(path_str) = path_value.to_str() {
+                for path in path_str.split(':') {
+                    if let Ok(entries) = fs::read_dir(path) {
+                        entries.for_each(|entry| {
+                            if let Ok(entry) = entry {
+                                if entry.path().file_name().unwrap() == cmd.get_program() {
+                                    location = entry.path().to_str().unwrap().to_string();
+                                }
+                            }
+                        });
                     }
                 }
-            });
+            } else {
+                eprintln!("Failed to convert PATH to string");
+            }
+        } else {
+            eprintln!("PATH value is None");
         }
+    } else {
+        eprintln!("PATH not found in command environment variables");
     }
     location
 }
 
 fn command_which(cmd: &Command) {
-    let location = _find(cmd);
-    if location.is_empty() {
-        println!("{}: not found", cmd.args()[0]);
-    } else {
-        println!("{} is {}", cmd.args()[0], location);
+    if cmd.get_program().to_ascii_lowercase().to_str().unwrap() == "which" {
+        // Collect the arguments into a vector
+        let args: Vec<OsString> = cmd.get_args().map(|arg| arg.to_os_string()).collect();
+        let envs: Vec<(String, String)> = std::env::vars().collect();
+
+        if let Some(new_cmd) = args.first() {
+            let mut target_command = Command::new(new_cmd);
+
+            // Skip the first argument since it's the new command
+            for arg in &args[1..] {
+                target_command.arg(arg);
+            }
+            for (key, val) in envs {
+                target_command.env(key, val);
+            }
+            let location = _find(&target_command);
+            if location.is_empty() {
+                println!(
+                    "{}: not found",
+                    target_command.get_program().to_str().unwrap()
+                );
+            } else {
+                println!(
+                    "{} is {}",
+                    target_command.get_program().to_str().unwrap(),
+                    location
+                );
+            }
+        }
     }
 }
 fn command_exit(cmd: &Command) {
-    let exit_code: i32 = cmd.args().join("").parse().unwrap_or(0);
+    let args: Vec<&str> = cmd.get_args().map(|arg| arg.to_str().unwrap()).collect();
+    let exit_code: i32 = args[0].parse::<i32>().unwrap();
     std::process::exit(exit_code);
 }
 
 fn command_echo(cmd: &Command) {
-    println!("{}", cmd.args().join(" "));
+    let args: Vec<&str> = cmd.get_args().map(|arg| arg.to_str().unwrap()).collect();
+    println!("{}", args.join(" "));
 }
 
 fn command_unknown(cmd: &Command) {
-    println!("{}: command not found", cmd.executable());
+    println!("{}: command not found", cmd.get_program().to_str().unwrap());
 }
 
-fn process_input(cmd: Command) -> Rc<Environment> {
-    let global_env = Rc::clone(&cmd.env);
+fn command_exec(mut cmd: Command) {
+    cmd.exec();
 
-    let local_env = Rc::new(Environment::new());
-    let temp_env = Rc::new(Environment::new());
+    // TODO: capture status, call command_unknown if it fails, do not let the process escape
+}
 
-    for (key, value) in global_env.variables.borrow().iter() {
-        local_env.insert_var(key, value.to_string());
-    }
+fn process_input(command_string: String) {
+    let parts: Vec<String> = command_string.split(" ").map(|s| s.to_string()).collect();
+    let mut iter = parts.iter().peekable();
+    let mut temp_vars: HashMap<String, String> = HashMap::new();
+    let global_variables: HashMap<String, String> = std::env::vars().collect();
 
-    let mut cmd = Command::new(local_env.clone()).with_parts(cmd.parts.clone());
-
-    if cmd.executable().contains('=') {
-        cmd = parse_environment_variables(&cmd);
-        for (key, value) in cmd.env.variables.borrow().iter() {
-            temp_env.insert_var(key, value.to_string());
+    if iter.peek().unwrap().contains("=") {
+        //loop while top of parts iterator contains "="
+        while iter.peek().unwrap().contains("=") {
+            let part = iter.next().unwrap();
+            let mut split = part.splitn(2, "=");
+            let key = split.next().unwrap_or("").trim_matches('\"').to_string();
+            let value = split.next().unwrap_or("").trim_matches('\"').to_string();
+            temp_vars.insert(key, value);
         }
     }
+    let temporary_vars = temp_vars.clone();
+    let program = iter.next().unwrap();
 
-    match cmd.executable() {
+    let mut cmd = Command::new(program);
+
+    while let Some(part) = iter.next() {
+        cmd.arg(part);
+    }
+
+    for (k, v) in global_variables.iter() {
+        cmd.env(k, v);
+    }
+
+    for (k, v) in temporary_vars.iter() {
+        cmd.env(k, v);
+    }
+
+    match cmd.get_program().to_str().unwrap() {
         "which" => command_which(&cmd),
         "env" => command_env(&cmd),
         "path" => command_path(&cmd),
         "export" => {
             command_export(&cmd);
+            let command_envs: Vec<(String, String)> = cmd
+                .get_envs()
+                .map(|(x, y)| {
+                    (
+                        x.to_str().unwrap().to_string(),
+                        y.unwrap().to_str().unwrap().to_string(),
+                    )
+                })
+                .collect();
 
-            let output_env: Rc<Environment> = Rc::clone(&global_env);
-
-            cmd.env.variables.borrow().iter().for_each(|(key, value)| {
-                if !temp_env.variables.borrow().keys().any(|x| x == key)
-                    && !global_env.variables.borrow().keys().any(|x| x == key)
-                {
-                    output_env.insert_var(key, value.to_string());
+            for (key, value) in command_envs {
+                if !temporary_vars.contains_key(&key) && !global_variables.contains_key(&key) {
+                    std::env::set_var(key, value);
                 }
-            });
-            // Need all keys that are not in the temp_env Environment
-            return Rc::clone(&output_env);
+            }
         }
         "type" => command_type(&cmd),
         "echo" => command_echo(&cmd),
         "exit" => command_exit(&cmd),
-        _ => command_unknown(&cmd),
+        _ => command_exec(cmd),
     }
-
-    global_env
-}
-
-fn parse_environment_variables(cmd: &Command) -> Command {
-    let mut cmd = cmd.clone();
-    while cmd.executable().contains('=') {
-        let parts: Vec<&str> = cmd.executable().split('=').collect();
-        let key = parts[0];
-        let val = parts[1..].join("");
-        let environment = Rc::clone(&cmd.env);
-        environment.insert_var(key, val);
-        cmd = Command::new(environment).with_parts(cmd.parts.clone()[1..].to_vec());
-    }
-    cmd
 }
 
 fn main() {
     let stdin = io::stdin();
-    let mut environment = Rc::new(Environment::new());
-    // TODO: Right here I need to pull in the processes environment and copy those down to the
-    // command
-
-    for (key, value) in std::env::vars() {
-        environment.insert_var(key.as_str(), value);
-    }
 
     loop {
         print!("$ ");
         io::stdout().flush().unwrap();
         let mut input = String::new();
         stdin.read_line(&mut input).expect("Failed to read line");
-
         let command_string = input.trim().to_string();
-        let cmd = Command::from(command_string, Rc::clone(&environment));
-
-        environment = process_input(cmd);
+        process_input(command_string);
     }
 }
