@@ -143,31 +143,26 @@ fn command_path(cmd: &Command) {
 }
 
 fn _find(cmd: &Command) -> String {
+    let mut location = String::new();
     for path in cmd.env.path.borrow().iter() {
         // Search path for cmd.args()[0]
         println!("{}", path);
-        match fs::read_dir(path) {
-            Ok(entries) => {
-                for entry in entries {
-                    match entry {
-                        Ok(entry) => {
-                            if entry.path().file_name().unwrap() == cmd.args()[0] {
-                                return entry.path().to_str().unwrap().to_string();
-                            }
-                        }
-                        Err(_) => {}
+        if let Ok(entries) = fs::read_dir(path) {
+            entries.for_each(|entry| {
+                if let Ok(entry) = entry {
+                    if entry.path().file_name().unwrap() == cmd.args()[0] {
+                        location = entry.path().to_str().unwrap().to_string();
                     }
                 }
-            }
-            Err(_) => {}
+            });
         }
     }
-    String::new()
+    location
 }
 
 fn command_which(cmd: &Command) {
     let location = _find(cmd);
-    if location.len() == 0 {
+    if location.is_empty() {
         println!("{}: not found", cmd.args()[0]);
     } else {
         println!("{} is {}", cmd.args()[0], location);
