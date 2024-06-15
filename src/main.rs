@@ -76,8 +76,9 @@ fn command_cd(cmd: &Command) {
     if dir.starts_with('/') {
         // absolute path
         match env::set_current_dir(dir) {
-            Ok(_) => println!("changed directory to : {}", dir),
-            Err(_) => println!("error changing directory to : {}", dir),
+            Ok(_) => (),
+            Err(_) => println!("cd: {}: No such file or directory", dir),
+            //Err(e) => println!("cd: {}: {}", dir, e),
         }
     }
 }
