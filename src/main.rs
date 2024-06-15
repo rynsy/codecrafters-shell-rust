@@ -67,13 +67,19 @@ fn command_pwd(cmd: &Command) {
 fn command_cd(cmd: &Command) {
     let args: Vec<&str> = cmd.get_args().map(|arg| arg.to_str().unwrap()).collect();
 
+    if args.is_empty() {
+        let _ = env::set_current_dir(_home_dir());
+        return;
+    }
+
     if args.len() > 1 {
         println!("Error: Bad format");
         return;
     }
 
-    let dir = *args.first().unwrap();
-    let dir = Path::new(dir);
+    let binding = &args.first().unwrap().replace('~', &_home_dir());
+    let dir = Path::new(binding);
+
     match env::set_current_dir(dir) {
         Ok(_) => (),
         Err(_) => println!("cd: {}: No such file or directory", dir.to_str().unwrap()),
@@ -115,37 +121,6 @@ fn command_path(cmd: &Command) {
     } else {
         eprintln!("PATH not found in command environment variables");
     }
-}
-
-fn _find(cmd: &Command) -> String {
-    let mut location = String::new();
-    if let Some((_, path_value)) = cmd
-        .get_envs()
-        .find(|(k, _)| k.to_ascii_lowercase() == "path")
-    {
-        if let Some(path_value) = path_value {
-            if let Some(path_str) = path_value.to_str() {
-                for path in path_str.split(':') {
-                    if let Ok(entries) = fs::read_dir(path) {
-                        entries.for_each(|entry| {
-                            if let Ok(entry) = entry {
-                                if entry.path().file_name().unwrap() == cmd.get_program() {
-                                    location = entry.path().to_str().unwrap().to_string();
-                                }
-                            }
-                        });
-                    }
-                }
-            } else {
-                eprintln!("Failed to convert PATH to string");
-            }
-        } else {
-            eprintln!("PATH value is None");
-        }
-    } else {
-        eprintln!("PATH not found in command environment variables");
-    }
-    location
 }
 
 fn command_which(cmd: &Command) {
@@ -280,6 +255,41 @@ fn process_input(command_string: String) {
     }
 }
 
+#[allow(deprecated)]
+fn _home_dir() -> String {
+    std::env::home_dir().unwrap().to_str().unwrap().to_string()
+}
+
+fn _find(cmd: &Command) -> String {
+    let mut location = String::new();
+    if let Some((_, path_value)) = cmd
+        .get_envs()
+        .find(|(k, _)| k.to_ascii_lowercase() == "path")
+    {
+        if let Some(path_value) = path_value {
+            if let Some(path_str) = path_value.to_str() {
+                for path in path_str.split(':') {
+                    if let Ok(entries) = fs::read_dir(path) {
+                        entries.for_each(|entry| {
+                            if let Ok(entry) = entry {
+                                if entry.path().file_name().unwrap() == cmd.get_program() {
+                                    location = entry.path().to_str().unwrap().to_string();
+                                }
+                            }
+                        });
+                    }
+                }
+            } else {
+                eprintln!("Failed to convert PATH to string");
+            }
+        } else {
+            eprintln!("PATH value is None");
+        }
+    } else {
+        eprintln!("PATH not found in command environment variables");
+    }
+    location
+}
 fn main() {
     let stdin = io::stdin();
 
